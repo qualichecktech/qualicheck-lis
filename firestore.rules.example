@@ -1,0 +1,62 @@
+// firestore.rules.example
+//
+// Reference only — this is NOT wired up automatically. Review and adapt
+// to your existing rules, then deploy via the Firebase console or CLI
+// (`firebase deploy --only firestore:rules`). It assumes a `users/{uid}`
+// document with a `role` field, matching src/utils/permissions.js.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && userRole() == 'super_admin';
+    }
+
+    function isStaff() {
+      return isSignedIn() && userRole() in
+        ['administrator', 'medical_technologist', 'pathologist', 'receptionist', 'cashier', 'doctor'];
+    }
+
+    // Users can read their own profile; only Super Admin manages roles.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+
+    // Existing Laboratory Test Catalog collections — read for any signed-in
+    // staff member, write restricted to admins/super admins.
+    match /tests/{docId} {
+      allow read: if isStaff();
+      allow write: if isSignedIn() && userRole() in ['administrator', 'super_admin'];
+    }
+    match /departments/{docId} {
+      allow read: if isStaff();
+      allow write: if isSignedIn() && userRole() in ['administrator', 'super_admin'];
+    }
+    match /units/{docId} {
+      allow read: if isStaff();
+      allow write: if isSignedIn() && userRole() in ['administrator', 'super_admin'];
+    }
+    match /inputTypes/{docId} {
+      allow read: if isStaff();
+      allow write: if isSignedIn() && userRole() in ['administrator', 'super_admin'];
+    }
+
+    // New collection introduced by the Reference Ranges page.
+    match /referenceRanges/{docId} {
+      allow read: if isStaff();
+      allow write: if isSignedIn() && userRole() in
+        ['administrator', 'pathologist', 'super_admin'];
+    }
+  }
+}
