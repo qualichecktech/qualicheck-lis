@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 // Update 'qualicheck-admin-portal' below to match your actual repository name.
 export default defineConfig({
   plugins: [react()],
-  base: '/qualicheck-admin-portal/',
+  base: '/qualicheck-lis/',
   build: {
     outDir: 'dist',
     sourcemap: false,
