@@ -1,8 +1,8 @@
 // src/modules/laboratory/pages/TestCatalog.jsx
 //
-// Reads/writes the EXISTING `tests` collection (plus the existing
-// `departments`, `units`, and `inputTypes` lookup collections) through
-// testCatalogService. Nothing here alters the shape of that data.
+// Reads and writes the laboratory test catalog using Firestore. The page now
+// understands the imported data shape while still keeping the simple table UI
+// that staff use to manage tests and their nested components.
 
 import { useMemo, useState } from 'react';
 import Card from '../../../components/common/Card';
@@ -26,7 +26,15 @@ import {
 } from '../services/testCatalogService';
 
 const PAGE_SIZE = 10;
-const EMPTY_FORM = { name: '', code: '', departmentId: '', unitId: '', inputTypeId: '', price: '' };
+const EMPTY_FORM = {
+  name: '',
+  code: '',
+  departmentId: '',
+  unitId: '',
+  inputTypeId: '',
+  price: '',
+  components: [],
+};
 
 export default function TestCatalog() {
   const { can } = useAuth();
@@ -47,8 +55,14 @@ export default function TestCatalog() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [componentDraft, setComponentDraft] = useState({ name: '', unit: '', inputType: '' });
 
-  const lookupName = (list, id) => list.find((item) => item.id === id)?.name || '—';
+  const lookupName = (list, id) => {
+    const match = list.find(
+      (item) => item.id === id || item.departmentId === id || item.unitCode === id || item.inputType === id || item.inputTypeId === id
+    );
+    return match?.name || match?.inputType || match?.unitCode || '—';
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -79,6 +93,12 @@ export default function TestCatalog() {
       header: 'Price',
       render: (row) => (row.price != null ? `₱${Number(row.price).toLocaleString()}` : '—'),
     },
+    {
+      key: 'components',
+      header: 'Components',
+      width: 110,
+      render: (row) => (row.components?.length ? `${row.components.length}` : '0'),
+    },
     ...(canManage
       ? [
           {
@@ -103,6 +123,7 @@ export default function TestCatalog() {
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setComponentDraft({ name: '', unit: '', inputType: '' });
     setErrors({});
     setModalOpen(true);
   }
@@ -116,9 +137,32 @@ export default function TestCatalog() {
       unitId: row.unitId || '',
       inputTypeId: row.inputTypeId || '',
       price: row.price ?? '',
+      components: Array.isArray(row.components) ? row.components : [],
     });
+    setComponentDraft({ name: '', unit: '', inputType: '' });
     setErrors({});
     setModalOpen(true);
+  }
+
+  function addComponent() {
+    const name = componentDraft.name.trim();
+    if (!name) return;
+
+    const nextComponent = {
+      id: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
+      name,
+      unit: componentDraft.unit.trim(),
+      inputType: componentDraft.inputType,
+      displayOrder: form.components.length + 1,
+      referenceRanges: [],
+    };
+
+    setForm({ ...form, components: [...form.components, nextComponent] });
+    setComponentDraft({ name: '', unit: '', inputType: '' });
+  }
+
+  function removeComponent(index) {
+    setForm({ ...form, components: form.components.filter((_, itemIndex) => itemIndex !== index) });
   }
 
   async function handleSave(e) {
@@ -138,6 +182,7 @@ export default function TestCatalog() {
       const payload = {
         ...form,
         price: form.price === '' ? null : Number(form.price),
+        components: form.components || [],
       };
       if (editingId) {
         await testsService.update(editingId, payload);
@@ -259,6 +304,51 @@ export default function TestCatalog() {
               onChange={(e) => setForm({ ...form, price: e.target.value })}
               placeholder="0.00"
             />
+          </FormField>
+
+          <FormField label="Components">
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, display: 'grid', gap: 10 }}>
+              {form.components.length === 0 ? (
+                <div style={{ color: '#64748b' }}>No components yet. Add them below.</div>
+              ) : (
+                form.components.map((component, index) => (
+                  <div key={component.id || `${component.name}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div>
+                      <strong>{component.name}</strong>
+                      {component.unit ? ` • ${component.unit}` : ''}
+                      {component.inputType ? ` • ${component.inputType}` : ''}
+                    </div>
+                    <Button size="sm" variant="secondary" type="button" onClick={() => removeComponent(index)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8 }}>
+                <TextInput
+                  value={componentDraft.name}
+                  onChange={(e) => setComponentDraft({ ...componentDraft, name: e.target.value })}
+                  placeholder="Component name"
+                />
+                <TextInput
+                  value={componentDraft.unit}
+                  onChange={(e) => setComponentDraft({ ...componentDraft, unit: e.target.value })}
+                  placeholder="Unit"
+                />
+                <Select
+                  value={componentDraft.inputType}
+                  onChange={(e) => setComponentDraft({ ...componentDraft, inputType: e.target.value })}
+                >
+                  <option value="">Input type</option>
+                  {inputTypes.map((it) => (
+                    <option key={it.id} value={it.name || it.inputType}>{it.name || it.inputType}</option>
+                  ))}
+                </Select>
+                <Button size="sm" variant="secondary" type="button" onClick={addComponent}>
+                  Add
+                </Button>
+              </div>
+            </div>
           </FormField>
         </form>
       </Modal>

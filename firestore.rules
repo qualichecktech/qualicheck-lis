@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isStaff() {
+      return isSignedIn() && userRole() in
+        ['administrator', 'medical_technologist', 'pathologist', 'receptionist', 'cashier', 'doctor'];
+    }
+
+    function isLabAdmin() {
+      return isSignedIn() && userRole() in ['administrator', 'super_admin', 'pathologist'];
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isLabAdmin());
+      allow write: if false;
+    }
+
+    match /tests/{docId} {
+      allow read: if isStaff();
+      allow write: if isLabAdmin();
+    }
+
+    match /departments/{docId} {
+      allow read: if isStaff();
+      allow write: if isLabAdmin();
+    }
+
+    match /units/{docId} {
+      allow read: if isStaff();
+      allow write: if isLabAdmin();
+    }
+
+    match /inputTypes/{docId} {
+      allow read: if isStaff();
+      allow write: if isLabAdmin();
+    }
+
+    match /referenceRanges/{docId} {
+      allow read: if isStaff();
+      allow write: if isLabAdmin();
+    }
+  }
+}
